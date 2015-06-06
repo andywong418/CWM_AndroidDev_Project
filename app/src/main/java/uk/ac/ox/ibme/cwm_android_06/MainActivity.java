@@ -3,7 +3,10 @@ package uk.ac.ox.ibme.cwm_android_06;
 
 import android.app.FragmentManager;
 import android.graphics.Color;
+import android.net.Uri;
+import android.nfc.Tag;
 import android.support.v4.app.FragmentActivity;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.os.Bundle;
@@ -28,18 +31,105 @@ import android.location.LocationListener;
 import android.preference.PreferenceManager;
 
 
+//import com.androidquery.AQuery;
+//import com.androidquery.callback.AjaxCallback;
+//import com.androidquery.callback.AjaxStatus;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
+import com.google.android.gms.common.GooglePlayServicesRepairableException;
+import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.location.places.Place;
+import com.google.android.gms.location.places.PlaceBuffer;
+import com.google.android.gms.location.places.Places;
+import com.google.android.gms.location.places.ui.PlacePicker;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
 import com.google.android.gms.maps.model.PolylineOptions;
 
+//import com.google.android.gms.
+import com.google.android.gms.location.places.AddPlaceRequest;
+import com.google.android.gms.location.places.GeoDataApi;
+import com.google.android.gms.location.places.ui.PlacePicker;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.common.api.GoogleApiClient.ConnectionCallbacks;
+import com.google.android.gms.common.api.GoogleApiClient.OnConnectionFailedListener;
+
+
+import android.support.v4.app.FragmentActivity;
+import android.util.Log;
+import android.view.View;
+import android.os.Bundle;
+import android.widget.Button;
+
+import com.google.android.gms.common.GooglePlayServicesNotAvailableException;
+import com.google.android.gms.common.GooglePlayServicesRepairableException;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.api.GoogleApiClient;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+import android.graphics.Color;
+import android.os.AsyncTask;
+import android.view.View.OnClickListener;
+import com.google.android.gms.maps.GoogleMap.OnMapClickListener;
+import com.google.android.gms.maps.GoogleMap.OnMapLongClickListener;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.PolylineOptions;
+import android.content.Intent;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.location.Criteria;
+import android.location.Location;
+import android.content.DialogInterface;
+import android.location.LocationManager;
+import android.content.SharedPreferences;
+import android.preference.PreferenceManager;
+import android.location.LocationListener;
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.StreetViewPanoramaCamera;
+
+import java.net.URI;
+import java.util.Collections;
 import java.util.Random;
+import java.util.Set;
 
-public class MainActivity extends FragmentActivity  {
+public class MainActivity extends FragmentActivity
+    implements ConnectionCallbacks,OnConnectionFailedListener {
 
+    private Button suggest = null;
+    private Button draw = null;
+    private SharedPreferences SP = null;
+    private boolean locationAvailable = false;
+    private LocationManager locationManager = null;
+    private int position_index;
+    private Location lastKnownLocation;
+    ArrayList<LatLng> markerPoints;
+    private GoogleApiClient mGoogleApiClient;
+    int PLACE_PICKER_REQUEST = 1;
+    //private IntentFilter myFilter = new IntentFilter(ACTION_NAME);
+
+    // AQuery aq;
 
     // The definition of the ALARM ID and
     // the creation of a Filter that will
@@ -47,26 +137,6 @@ public class MainActivity extends FragmentActivity  {
     // alarm signal
     public static final String ACTION_NAME = "uk.ac.ox.ibme.android_06.MYALARM";
     PendingIntent pendingIntent = null;
-
-
-
-    // This is the delay that is set initially (in seconds)
-    private int delayAlarmSeconds = 5;
-
-
-    private Button alarmActivation = null;
-    private Button alarmDeactivation = null;
-    private SeekBar alarmDelay = null;
-    private TextView alarmTextView = null;
-    private SharedPreferences SP = null;
-    private boolean locationAvailable = false;
-    private LocationManager locationManager = null;
-    private int position_index;
-    private IntentFilter myFilter = new IntentFilter(ACTION_NAME);
-
-
-    // A variable that will keep the state of the last known location
-    private Location lastKnownLocation;
 
     // Polyline variables
     PolylineOptions polylineOptions = new PolylineOptions();
@@ -76,39 +146,27 @@ public class MainActivity extends FragmentActivity  {
     // the Map we are receiving from the Google API
     private GoogleMap mMap;
 
-
-    /**
-     * Sets up the map if it is possible to do so (i.e., the Google Play services APK is correctly
-     * installed) and the map has not already been instantiated.
-     */
     private void setUpMapIfNeeded() {
         // Do a null check to confirm that we have not already instantiated the map.
         if (mMap == null) {
 
             SupportMapFragment smf = null;
-            //TODO EX 2: Get the SupportMapFragment from the getSupportFragmentManager() by using the findFragmentById and passing the R.id.map
             smf = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
 
-            //TODO EX 2: Get the map from the SupportMapFragment.
             mMap = smf.getMap();
 
             // This method initialise the blue dot that show our current location on the map
-            if (mMap!= null) {
+            if (mMap != null) {
                 mMap.setMyLocationEnabled(true);
             }
         }
     }
 
-
-
-    // This is the BroadcastReceiver, that is
-    // the method that will be 'attached'
-    // together with a filter manage each signal
-    // that we receive from the operating system
-    BroadcastReceiver alarmReceiver = new BroadcastReceiver() {
-        @Override
-        public void onReceive(Context context, Intent intent) {
-            Toast.makeText(context, "Alarm triggered", Toast.LENGTH_LONG).show();
+    // Define a listener that responds to location updates. The updates arrives
+    LocationListener locationListener = new LocationListener() {
+        public void onLocationChanged(Location location) {
+            // Store location data every time the location changes
+            lastKnownLocation = location;
 
             if (locationAvailable && lastKnownLocation != null) {
                 Log.d(this.toString(), "geo: " + lastKnownLocation.getLongitude() + "," + lastKnownLocation.getLatitude() + "," + lastKnownLocation.getAltitude());
@@ -116,101 +174,40 @@ public class MainActivity extends FragmentActivity  {
 
             // Check if the mMap is initialised
             if (mMap != null && lastKnownLocation != null) {
-
                 LatLng position = null;
-                //TODO EX 3: Get the Position as a specific LatLng object. This object represents a location.
-                position = new LatLng(lastKnownLocation.getLatitude(),lastKnownLocation.getLongitude());
-
-                //TODO EX 3:  use the method moveCamera to move the map into your new position.
-                //TODO        Use CameraUpdateFactory.newLatLng or CameraUpdateFactory.newLatLngZoom
+                position = new LatLng(lastKnownLocation.getLatitude(), lastKnownLocation.getLongitude());
                 mMap.moveCamera(CameraUpdateFactory.newLatLng(position));
-
                 MarkerOptions mo = null;
-
-                //TODO  EX 3: create a MarkerOptions object, give it a title (using and incrementing the position_index variable),
-                //TODO        and set it to the current position.
                 mo = new MarkerOptions().title(Integer.toString(position_index)).position(position);
 
                 if (mo != null) {
-                    position_index = position_index+1;
-                    mMap.addMarker(mo);
-
-                    polylineOptions.add(position);
-                    polylineOptions.color(Color.RED);
-                    polyline = mMap.addPolyline(polylineOptions);
+                    position_index = position_index + 1;
                 }
             }
         }
-    };
 
-
-
-    // Define a listener that responds to location updates. The updates arrives
-    LocationListener locationListener = new LocationListener() {
-        public void onLocationChanged(Location location) {
-            // Store location data every time the location changes
-            lastKnownLocation = location;
+        public void onStatusChanged(String provider, int status, Bundle extras) {
         }
 
-        public void onStatusChanged(String provider, int status, Bundle extras) {}
-        public void onProviderEnabled(String provider) {}
-        public void onProviderDisabled(String provider) {}
+        public void onProviderEnabled(String provider) {
+        }
+
+        public void onProviderDisabled(String provider) {
+        }
     };
 
 
-
-    @Override
-    protected void onPause() {
-
-        // Here we unregister the information about
-        // the alarm receiver so that the application
-        // is in background and does not consume battery
-        // [ REMOVE ME ]
-        unregisterReceiver(alarmReceiver);
-
-        // Here we do the same for the location manager
-        locationManager.removeUpdates(locationListener);
-
-        // and we do not forget to call the parent's method
-        super.onPause();
-    }
-
-    @Override
-    protected void onResume() {
-
-        // Here we activate the location module.
-        // It also 'attach' the location Listener
-        activateLocationManager();
-
-
-        // Here we register the receiver of the alarm events
-        registerReceiver(alarmReceiver, myFilter);
-
-
-        super.onResume();
-    }
-
-    // This is the function that returns
-    // the name of the best location provider
-    // given a certain set of criteria
+    // This is the function that returns the name of the best location provider given a certain set of criteria
     private String getBestLocationProvider() {
         Criteria c = new Criteria();
         c.setAccuracy(Criteria.ACCURACY_FINE);
-
-
         // Here return the output value of the getBestProvider method
         return locationManager.getBestProvider(c, true);
     }
 
 
-
-
-    /*
-     * This method activates the LocationManager and
-     * attach the listener for the location updates
-     */
+    //This method activates the LocationManager
     private void activateLocationManager() {
-
 
         position_index = 0;
 
@@ -227,14 +224,14 @@ public class MainActivity extends FragmentActivity  {
 
 
         // If the bestProvider is not accessible and/or enabled
-        if ( !locationManager.isProviderEnabled( bestProvider ) ) {
-            // .. we crerate a custom AlertDialog (as seen in Module 3) that will
+        if (!locationManager.isProviderEnabled(bestProvider)) {
+            // .. we create a custom AlertDialog (as seen in Module 3) that will
             // initiate the Intent to activate the Location management for the phone
             final AlertDialog.Builder builder = new AlertDialog.Builder(this);
             builder.setMessage("Your LOCATION provider seems to be disabled, do you want to enable it?")
                     .setCancelable(false)
                     .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
-                        public void onClick( final DialogInterface dialog, final int id) {
+                        public void onClick(final DialogInterface dialog, final int id) {
                             startActivity(new Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS));
                         }
                     })
@@ -249,183 +246,490 @@ public class MainActivity extends FragmentActivity  {
 
 
         // In case the location manager and the bestProvider are not empty and previous checks succeeded...
-        if ( locationManager != null && bestProvider != "") {
-            locationManager.requestLocationUpdates(bestProvider, 0, 0, locationListener);
+        if (locationManager != null && bestProvider != "") {
+            locationManager.requestLocationUpdates(bestProvider, 3000, 5, locationListener);
             lastKnownLocation = locationManager.getLastKnownLocation(bestProvider);
             locationAvailable = true;
         }
 
     }
 
-
+    // We make sure to clean up the alert before leaving...
+    // We do not want to keep any resource going after our app is gone.
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         setContentView(R.layout.activity_main);
+
+//        aq = new AQuery(this);
+//        aq.ajax( "http://echo.jsontest.com/insert-key-here/insert-value-here/key/value_android_CWM", JSONObject.class, new AjaxCallback<JSONObject>() {
+//
+//            @Override
+//            public void callback(String url, JSONObject json, AjaxStatus status) {
+//                if(json != null){
+//                    //successful ajax call, show status code and json content
+//                    try {
+//                        Toast.makeText(aq.getContext(), json.getString("key") , Toast.LENGTH_LONG).show();
+//
+//
+//                        ((JSONObject) json.getJSONArray("ace").get(0)).getDouble("")
+//
+//                    } catch (JSONException e) {
+//                        e.printStackTrace();
+//                    }
+//                }else{
+//
+//                    //ajax error, show error code
+//                    Toast.makeText(aq.getContext(), "Error:" + status.getCode(), Toast.LENGTH_LONG).show();
+//                }
+//            }
+//        });
 
         // This function initialise the MAP object
         setUpMapIfNeeded();
+        activateLocationManager();
 
         // The SharedPreference Manager to store
         // information we might need after when
         // the application is restarted
         SP = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-
-        // Find the button and populate our variable
-        alarmActivation = (Button) findViewById(R.id.alarm_activation);
-
-
-        // Assign the ClickListener that will manage the 'click' event
-        alarmActivation.setOnClickListener(
-                new View.OnClickListener() {
-
-                    @Override
-                    public void onClick(View v) {
-                        int id = SP.getInt("ALARM_ID", -1);
-
-                        if ( id < 0 ) {
-                            Random r = new Random();
-                            id = r.nextInt(10000);
-                            setAlarm(delayAlarmSeconds*1000, id);
+        mGoogleApiClient = new GoogleApiClient
+                .Builder( this )
+                .enableAutoManage(this, 0, this)
+                .addApi( Places.GEO_DATA_API )
+                .addApi( Places.PLACE_DETECTION_API )
+                .addConnectionCallbacks( this )
+                .addOnConnectionFailedListener( this )
+                .build();
 
 
-                            Log.d(this.toString(), "Setting Alarm ID: " + id + " every " + delayAlarmSeconds + " seconds");
+        // Initializing
+        // markerPoints is an array, sth like [lat/lng: (51.75060887692055,-1.257004514336586), lat/lng: (51.75513937028631,-1.2594044208526611), lat/lng: (51.753900731883256,-1.2564617022871971), lat/lng: (51.75317513301807,-1.260518878698349)]
 
-                            // Here we record the value of the alarm_id in a Shared Preference
-                            // so that it can be retrieved later on
-                            SP.edit().putInt("ALARM_ID", id).commit();
+        // TODO ON FRIDAY MORNING
+        int size = SP.getInt("Points_size", -1);
+       // markerPoints.clear();
+        markerPoints = new ArrayList<LatLng>();
 
-                            // Also activate the location manager in case it is not already active
-                            activateLocationManager();
+        MarkerOptions options2 = new MarkerOptions();
 
-                        } else {
-                            Toast.makeText(getApplicationContext(), "Alarm already set", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                });
+        if (size != -1) {
+            for (int iii = 0; iii < size; iii++) {
+                Double lat = Double.parseDouble(SP.getString("Points_" + iii + "0", ""));
+                Double lng = Double.parseDouble(SP.getString("Points_" + iii + "1", ""));
+                LatLng position = new LatLng(lat, lng);
+                markerPoints.add(position);
 
-
-        // Find the Deactivate button and populate our variable
-        alarmDeactivation = (Button) findViewById(R.id.alarm_deactivation);
-
-
-        // Assign the ClickListener that will manage the 'click' event
-        alarmDeactivation.setOnClickListener(
-                new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        int id = SP.getInt("ALARM_ID", -1);
-                        if ( id < 0 ) {
-                            Toast.makeText(getApplicationContext(), "Alarm not set", Toast.LENGTH_SHORT).show();
-                        } else {
-                            cancelAlarm(id);
-                            Log.d(this.toString(), "Cancelled Alarm ID: " + id);
-
-
-                            // Here we remove the value of the alarm_id from the Shared Preference
-                            SP.edit().remove("ALARM_ID").commit();
-                        }
-                    }
-                });
-
-        // Now we find the TextView element
-        alarmTextView = (TextView) findViewById(R.id.alarmTextView);
-
-        // The SeekBar is the element that let
-        // you have a scrollbar selector to pick
-        // a number between the set MIN and MAX
-        alarmDelay = (SeekBar) findViewById(R.id.alarm_delay);
-
-        // Here we set the standard delay.
-        alarmDelay.setProgress(delayAlarmSeconds);
-
-
-        // Many types of event listeners exists this onSeekBarChange one does what the
-        // names suggest and fires an event every time the SeekBar changes its value
-        alarmDelay.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // We both display and store for future use the value of the progressbar
-                alarmTextView.setText("" + progress);
-                delayAlarmSeconds = progress;
+                options2.position(position);
+                if (markerPoints.size() == 1) {
+                    options2.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+                } else if (markerPoints.size() == 2) {
+                    options2.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+                } else {
+                    options2.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
+                }
+                mMap.addMarker(options2);
             }
 
+            LatLng origin = markerPoints.get(0);
+            LatLng dest = markerPoints.get(1);
+
+            // Getting URL to the Google Directions API
+            String url = getDirectionsUrl(origin, dest);
+
+            DownloadTask downloadTask = new DownloadTask();
+
+            // Start downloading json data from Google Directions API
+            downloadTask.execute(url);
+        }
+
+
+        //if (null == markerPoints) {
+            markerPoints = new ArrayList<LatLng>(); // TODO: SET ARGUMENT AS SP.GET WHATEVER
+        //} else {
+
+        //}
+
+
+
+        // Getting reference to SupportMapFragment of the activity_main
+        SupportMapFragment fm = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+
+        // Getting Map for the SupportMapFragment
+        mMap = fm.getMap();
+        // Enable MyLocation Button in the Map
+        mMap.setMyLocationEnabled(true);
+        // Setting onclick event listener for the map
+        mMap.setOnMapClickListener(new OnMapClickListener() {
             @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {}
+            public void onMapClick(LatLng point) {
+
+                // Already 10 locations with 8 waypoints and 1 start location and 1 end location.
+                // Up to 8 waypoints are allowed in a query for non-business users
+                if (markerPoints.size() >= 10) {
+                    return;
+                }
+                // Adding new item to the ArrayList
+                markerPoints.add(point);
+
+                // Creating MarkerOptions
+                MarkerOptions options = new MarkerOptions();
+
+                // Setting the position of the marker
+                options.position(point);
+
+                /**
+                 * For the start location, the color of marker is GREEN and
+                 * for the end location, the color of marker is RED and
+                 * for the rest of markers, the color is AZURE
+                 */
+                if (markerPoints.size() == 1) {
+                    options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+                } else if (markerPoints.size() == 2) {
+                    options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+                } else {
+                    options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
+                }
+
+                // Add new marker to the Google Map Android API V2
+                mMap.addMarker(options);
+
+            }
+
+
+
+        });
+        mMap.setOnMarkerClickListener(new GoogleMap.OnMarkerClickListener() {
+            @Override
+            public boolean onMarkerClick(Marker pointer) {
+
+                LatLng loc = pointer.getPosition();
+                Uri gmmIntentUri = Uri.parse("google.streetview:cbll=" + Double.toString(loc.latitude) + "," + Double.toString(loc.longitude));
+
+
+                Intent mapIntent = new Intent(Intent.ACTION_VIEW, gmmIntentUri);
+                mapIntent.setPackage("com.google.android.apps.maps");
+                startActivity(mapIntent);
+                return true;
+            }
+        });
+        suggest = (Button) findViewById(R.id.suggest);
+        // Assign the ClickListener that will manage the 'click' event
+        suggest.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+//                        if( mGoogleApiClient == null || !mGoogleApiClient.isConnected() )
+//                            return;
+
+                        PlacePicker.IntentBuilder builder = new PlacePicker.IntentBuilder();
+
+                        try {
+                            startActivityForResult( builder.build(MainActivity.this), PLACE_PICKER_REQUEST );
+                        } catch ( GooglePlayServicesRepairableException e ) {
+                            Log.d( "PlacesAPI Demo", "GooglePlayServicesRepairableException thrown" );
+                        } catch ( GooglePlayServicesNotAvailableException e ) {
+                            Log.d( "PlacesAPI Demo", "GooglePlayServicesNotAvailableException thrown" );
+                        }
+
+                    }
+                });
+
+        draw = (Button) findViewById(R.id.draw);
+        // Click event handler for Button btn_draw
+        draw.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Checks, whether start and end locations are captured
+                if (markerPoints.size() >= 2) {
+                    LatLng origin = markerPoints.get(0);
+                    LatLng dest = markerPoints.get(1);
+
+                    // Getting URL to the Google Directions API
+                    String url = getDirectionsUrl(origin, dest);
+
+                    DownloadTask downloadTask = new DownloadTask();
+
+                    // Start downloading json data from Google Directions API
+                    downloadTask.execute(url);
+
+                    // TODO: SAVE IMMEDIATELY TO SP ---------------------------------------------------->
+
+                    System.out.println(markerPoints);
+
+                    //Save immediately in SP
+                    SP.edit().putInt("Points_size", markerPoints.size()).commit();
+                    // markerPoints is an array, sth like [lat/lng: (51.75060887692055,-1.257004514336586), lat/lng: (51.75513937028631,-1.2594044208526611), lat/lng: (51.753900731883256,-1.2564617022871971), lat/lng: (51.75317513301807,-1.260518878698349)]
+                    for (int iii=0; iii<markerPoints.size(); iii++) {
+
+                        SP.edit().remove("Points_" + iii + "0").commit();
+                        SP.edit().remove("Points_" + iii + "1").commit();
+
+                        SP.edit().putString("Points_" + iii + "0", Double.toString(markerPoints.get(iii).latitude)).commit();
+                        SP.edit().putString("Points_" + iii + "1", Double.toString(markerPoints.get(iii).longitude)).commit();
+
+                    }
+                }
+
+            }
+        });
+
+        // The map will be cleared on long click
+        mMap.setOnMapLongClickListener(new OnMapLongClickListener() {
 
             @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {}
+            public void onMapLongClick(LatLng point) {
+                // Removes all the points from Google Map
+                mMap.clear();
+                // Removes all the points in the ArrayList
+                markerPoints.clear();
+                SP.edit().clear().commit();
+            }
         });
     }
 
+    private String getDirectionsUrl(LatLng origin, LatLng dest) {
 
-    // We make sure to clean up the alert before leaving...
-    // We do not want to keep any resource going after our app is gone.
-    @Override
-    protected void onDestroy() {
+        // Origin of route
+        String str_origin = "origin=" + origin.latitude + "," + origin.longitude;
+        // Destination of route
+        String str_dest = "destination=" + dest.latitude + "," + dest.longitude;
+        // Sensor enabled
+        String sensor = "sensor=false";
+        // Waypoints
+        String waypoints = "";
+        for (int i = 2; i < markerPoints.size(); i++) {
+            LatLng point = (LatLng) markerPoints.get(i);
+            if (i == 2)
+                waypoints = "waypoints=";
+            waypoints += point.latitude + "," + point.longitude + "|";
+        }
+        String mode = "mode=walking";
+        // Building the parameters to the web service
+        String parameters = str_origin + "&" + str_dest + "&" + sensor + "&" + mode + "&"+ waypoints;
+        // Output format
+        String output = "json";
+        // Building the url to the web service
+        String url = "https://maps.googleapis.com/maps/api/directions/" + output + "?" + parameters;
 
+        return url;
+    }
 
-        int id = SP.getInt("ALARM_ID", -1);
-        if ( id > 0 ) {
-            // When the app cease to live, we cancel the
-            // Alarm (that otherwise will continue to fire)
-            cancelAlarm(id);
+    /**
+     * A method to download json data from url
+     */
+    private String downloadUrl(String strUrl) throws IOException {
+        String data = "";
+        InputStream iStream = null;
+        HttpURLConnection urlConnection = null;
+        try {
+            URL url = new URL(strUrl);
 
-            // Additionally, we remove the value of the alarm_id
-            // from the Shared Preference
+            // Creating an http connection to communicate with url
+            urlConnection = (HttpURLConnection) url.openConnection();
 
-            SP.edit().remove("ALARM_ID").commit();
+            // Connecting to url
+            urlConnection.connect();
+
+            // Reading data from url
+            iStream = urlConnection.getInputStream();
+
+            BufferedReader br = new BufferedReader(new InputStreamReader(iStream));
+
+            StringBuffer sb = new StringBuffer();
+
+            String line = "";
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+
+            data = sb.toString();
+
+            br.close();
+
+        } catch (Exception e) {
+            Log.d("", "Exception while downloading url");
+        } finally {
+            iStream.close();
+            urlConnection.disconnect();
+        }
+        return data;
+    }
+
+    // Fetches data from url passed
+    private class DownloadTask extends AsyncTask<String, Void, String> {
+
+        // Downloading data in non-ui thread
+        @Override
+        protected String doInBackground(String... url) {
+
+            // For storing data from web service
+            String data = "";
+
+            try {
+                // Fetching the data from web service
+                data = downloadUrl(url[0]);
+            } catch (Exception e) {
+                Log.d("Background Task", e.toString());
+            }
+            return data;
         }
 
-        super.onDestroy();
+        // Executes in UI thread, after the execution of
+        // doInBackground()
+        @Override
+        protected void onPostExecute(String result) {
+            super.onPostExecute(result);
+
+            ParserTask parserTask = new ParserTask();
+
+            // Invokes the thread for parsing the JSON data
+            parserTask.execute(result);
+
+        }
     }
 
-
-    /*
-     * Set an alarm using the delay in milliseconds and providing an ID for the alarm.
-     * Having the ID we can cancel the Alarm if needed.
+    /**
+     * A class to parse the Google Places in JSON format
      */
-    private void setAlarm(long Interval, int ID) {
-        final AlarmManager am = (AlarmManager) getSystemService(Activity.ALARM_SERVICE);
-        Intent intent = new Intent(ACTION_NAME);
+    private class ParserTask extends AsyncTask<String, Integer, List<List<HashMap<String, String>>>> {
 
-        pendingIntent = PendingIntent.getBroadcast(getApplicationContext(), ID, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+        // Parsing the data in non-ui thread
+        @Override
+        protected List<List<HashMap<String, String>>> doInBackground(String... jsonData) {
 
-        // Here we set the Alarm using the tipe RTC_WAKEUP,
-        // the current time, the Interval, and the
-        // PendingIntent that identifies the Signal
-        am.setRepeating(AlarmManager.RTC_WAKEUP, System.currentTimeMillis(), Interval, pendingIntent);
+            JSONObject jObject;
+            List<List<HashMap<String, String>>> routes = null;
 
-        Toast.makeText(getApplicationContext(), "Alarm set", Toast.LENGTH_SHORT).show();
+            try {
+                jObject = new JSONObject(jsonData[0]);
+                DirectionsJSONParser parser = new DirectionsJSONParser();
+
+                // Starts parsing data
+                routes = parser.parse(jObject);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return routes;
+        }
+
+        // Executes in UI thread, after the parsing process
+        @Override
+        protected void onPostExecute(List<List<HashMap<String, String>>> result) {
+
+            ArrayList<LatLng> points = null;
+            PolylineOptions lineOptions = null;
+
+            // Traversing through all the routes
+            for (int i = 0; i < result.size(); i++) {
+                points = new ArrayList<LatLng>();
+                lineOptions = new PolylineOptions();
+
+                // Fetching i-th route
+                List<HashMap<String, String>> path = result.get(i);
+
+                // Fetching all the points in i-th route
+                for (int j = 0; j < path.size(); j++) {
+                    HashMap<String, String> point = path.get(j);
+
+                    double lat = Double.parseDouble(point.get("lat"));
+                    double lng = Double.parseDouble(point.get("lng"));
+                    LatLng position = new LatLng(lat, lng);
+
+                    points.add(position);
+                }
+
+                // Adding all the points in the route to LineOptions
+                lineOptions.addAll(points);
+                lineOptions.width(2);
+                lineOptions.color(Color.RED);
+            }
+
+            // Drawing polyline in the Google Map for the i-th route
+            mMap.addPolyline(lineOptions);
+        }
     }
 
-
-    /*
-     *   Just using a random integer, and then returning it.
-     */
-    private int setAlarm (long ms) {
-        Random r = new Random();
-        int ID = r.nextInt(10000);
-        setAlarm(ms, ID);
-        return ID;
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (mGoogleApiClient != null)
+            mGoogleApiClient.connect();
     }
 
-
-    /*
-     * Cancel an alarm using the ID of the alarm.
-     */
-    private void cancelAlarm(int ID) {
-        final AlarmManager am = (AlarmManager) getApplicationContext().getSystemService(Context.ALARM_SERVICE);
-        Intent intent = new Intent(ACTION_NAME);
-
-        PendingIntent pi = PendingIntent.getBroadcast(this, ID, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-        am.cancel(pi);
-
-        Toast.makeText(getApplicationContext(), "Alarm cancelled", Toast.LENGTH_SHORT).show();
+    protected void onStop() {
+        if (mGoogleApiClient != null && mGoogleApiClient.isConnected()) {
+            mGoogleApiClient.disconnect();
+        }
+        super.onStop();
     }
 
+    @Override
+    public void onConnected(Bundle connectionHint) {
+        // Connected to Google Play services!
+        // The good stuff goes here.
 
 
-}
+    }
+
+    @Override
+    public void onConnectionSuspended(int cause) {
+        // The connection has been interrupted.
+        // Disable any UI components that depend on Google APIs
+        // until onConnected() is called.
+    }
+
+    @Override
+    public void onConnectionFailed(ConnectionResult result) {
+        // This callback is important for handling errors that
+        // may occur while attempting to connect with Google.
+        //
+        //More about this in the 'Handle Connection Failures' section.
+
+    }
+
+    @Override
+    protected void onActivityResult( int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if( requestCode == PLACE_PICKER_REQUEST && resultCode == RESULT_OK ) {
+            //displayPlace( PlacePicker.getPlace( data, this ) );
+            Place place = PlacePicker.getPlace(data, this);
+            LatLng point = place.getLatLng();
+            // Already 10 locations with 8 waypoints and 1 start location and 1 end location.
+            // Up to 8 waypoints are allowed in a query for non-business users
+            if (markerPoints.size() >= 10) {
+                return;
+            }
+            // Adding new item to the ArrayList
+            markerPoints.add(point);
+
+            // Creating MarkerOptions
+            MarkerOptions options = new MarkerOptions();
+
+            // Setting the position of the marker
+            options.position(point);
+
+            /**
+             * For the start location, the color of marker is GREEN and
+             * for the end location, the color of marker is RED and
+             * for the rest of markers, the color is AZURE
+             */
+            if (markerPoints.size() == 1) {
+                options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+            } else if (markerPoints.size() == 2) {
+                options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+            } else {
+                options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_AZURE));
+            }
+
+            // Add new marker to the Google Map Android API V2
+            mMap.addMarker(options);
+
+        }
+    }
+};
